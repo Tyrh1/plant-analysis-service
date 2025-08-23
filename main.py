@@ -30,64 +30,41 @@ class PlantAnalyzer:
         models_dir = 'models'
         os.makedirs(models_dir, exist_ok=True)
         
-        model_urls = {
+        model_files = {
+            'best_plant_classifier_advanced.h5': os.environ.get('CLASSIFIER_MODEL_URL'),
+            'esp32_plant_detector.h5': os.environ.get('DETECTOR_MODEL_URL'), 
+            'label_encoder_advanced.pkl': os.environ.get('LABEL_ENCODER_URL')
+        }
+        
+        # Fallback to Google Drive URLs if env vars not set
+        fallback_urls = {
             'best_plant_classifier_advanced.h5': 'https://drive.google.com/uc?export=download&id=17wOvHUju1_DdclVE0FCtnxMSFz9CdY08',
             'esp32_plant_detector.h5': 'https://drive.google.com/uc?export=download&id=1D-Ey9qe9JlEBEaqhIo-4VYDIKhHuCILd',
             'label_encoder_advanced.pkl': 'https://drive.google.com/uc?export=download&id=1uMtE4SYzl_EMg1GchaIIyFHS7wR4PRG8'
         }
         
-        for filename, url in model_urls.items():
+        for filename, url in model_files.items():
+            if not url:
+                url = fallback_urls[filename]
+                
             filepath = os.path.join(models_dir, filename)
             if not os.path.exists(filepath):
                 try:
                     print(f"Downloading {filename}...")
-                    session = requests.Session()
-                    response = session.get(url, stream=True)
                     
-                    if 'text/html' in response.headers.get('content-type', ''):
-                        html_content = response.text
-                        print(f"Handling virus scan warning for {filename}...")
-                        
-                        # Multiple methods to extract confirm token
-                        confirm_token = None
-                        
-                        # Method 1: Look for form action with confirm parameter
-                        import re
-                        token_patterns = [
-                            r'confirm=([^&"]+)',
-                            r'"confirm"\s*:\s*"([^"]+)"',
-                            r'name="confirm"\s+value="([^"]+)"',
-                            r'&amp;confirm=([^&"]+)',
-                            r'confirm%3D([^%&"]+)'
-                        ]
-                        
-                        for pattern in token_patterns:
-                            match = re.search(pattern, html_content)
-                            if match:
-                                confirm_token = match.group(1)
-                                print(f"Found confirm token using pattern: {pattern}")
-                                break
-                        
-                        if confirm_token:
-                            # Extract file ID from original URL
-                            file_id = url.split('id=')[1]
-                            confirm_url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={confirm_token}"
-                            print(f"Retrying with confirm URL...")
-                            response = session.get(confirm_url, stream=True)
-                        else:
-                            print(f"Could not find confirm token for {filename}")
-                            print("HTML snippet:", html_content[:500])
-                            continue
+                    response = requests.get(url, stream=True, timeout=300)
+                    
+                    # Check if we got HTML (Google Drive error page)
+                    content_type = response.headers.get('content-type', '')
+                    if 'text/html' in content_type:
+                        print(f"❌ {filename}: Google Drive serving HTML instead of file")
+                        print("💡 Solution: Upload files to a different hosting service")
+                        print("   Recommended: Hugging Face Hub, GitHub Releases, or direct upload")
+                        continue
                     
                     response.raise_for_status()
                     
-                    # Final check for HTML content
-                    content_type = response.headers.get('content-type', '')
-                    if 'text/html' in content_type:
-                        print(f"Warning: Still receiving HTML for {filename}")
-                        print("Response headers:", dict(response.headers))
-                        continue
-                    
+                    # Download file
                     with open(filepath, 'wb') as f:
                         for chunk in response.iter_content(chunk_size=8192):
                             if chunk:
@@ -95,15 +72,17 @@ class PlantAnalyzer:
                     
                     # Verify file size
                     file_size = os.path.getsize(filepath)
-                    if file_size < 1000:  # Less than 1KB is likely an error page
-                        print(f"Warning: {filename} is only {file_size} bytes, likely corrupted")
+                    if file_size < 1000:
+                        print(f"❌ {filename}: File too small ({file_size} bytes), likely corrupted")
                         os.remove(filepath)
                         continue
                         
-                    print(f"Downloaded {filename} successfully ({file_size} bytes)")
+                    print(f"✅ {filename}: Downloaded successfully ({file_size:,} bytes)")
+                    
                 except Exception as e:
-                    print(f"Error downloading {filename}: {e}")
-    
+                    print(f"❌ Error downloading {filename}: {e}")
+                    print("💡 Try uploading files to Hugging Face Hub or GitHub Releases")
+
     def load_models(self):
         """Load the trained CNN models"""
         try:
@@ -255,4 +234,9 @@ async def startup_event():
         print(f"Classifier: {'✅' if analyzer.classifier_model else '❌'}")
         print(f"Detector: {'✅' if analyzer.detector_model else '❌'}")
         print(f"Label Encoder: {'✅' if analyzer.label_encoder else '❌'}")
+        print()
+        print("🔧 SOLUTIONS:")
+        print("1. Upload models to Hugging Face Hub (free): https://huggingface.co/")
+        print("2. Use GitHub Releases for files <2GB")
+        print("3. Set environment variables: CLASSIFIER_MODEL_URL, DETECTOR_MODEL_URL, LABEL_ENCODER_URL")
     print("=== Service Ready ===")
