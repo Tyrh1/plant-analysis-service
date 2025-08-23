@@ -184,6 +184,16 @@ class PlantAnalyzer:
 # Initialize analyzer
 analyzer = PlantAnalyzer()
 
+@app.get("/")
+async def root():
+    """Root endpoint to handle health checks and provide service info"""
+    return {
+        "service": "Plant Analysis Service",
+        "status": "running",
+        "models_loaded": analyzer.classifier_model is not None and analyzer.detector_model is not None,
+        "endpoints": ["/analyze", "/health"]
+    }
+
 @app.post("/analyze")
 async def analyze_plant(request: AnalysisRequest):
     """Analyze plant image endpoint"""
@@ -211,3 +221,15 @@ async def analyze_plant(request: AnalysisRequest):
 async def health_check():
     return {"status": "healthy", "models_loaded": analyzer.classifier_model is not None}
 
+@app.on_event("startup")
+async def startup_event():
+    """Log startup information and model status"""
+    print("=== Plant Analysis Service Starting ===")
+    if analyzer.classifier_model and analyzer.detector_model and analyzer.label_encoder:
+        print("✅ All models loaded successfully!")
+    else:
+        print("❌ Model loading failed - check download logs above")
+        print(f"Classifier: {'✅' if analyzer.classifier_model else '❌'}")
+        print(f"Detector: {'✅' if analyzer.detector_model else '❌'}")
+        print(f"Label Encoder: {'✅' if analyzer.label_encoder else '❌'}")
+    print("=== Service Ready ===")
