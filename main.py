@@ -44,28 +44,39 @@ class PlantAnalyzer:
                     session = requests.Session()
                     response = session.get(url, stream=True)
                     
-                    # Check if we got the virus scan warning page
-                    if 'text/html' in response.headers.get('content-type', '') and 'virus scan warning' in response.text.lower():
+                    if 'text/html' in response.headers.get('content-type', ''):
+                        html_content = response.text
                         print(f"Handling virus scan warning for {filename}...")
                         
-                        # Extract confirm token from the HTML
+                        # Multiple methods to extract confirm token
                         confirm_token = None
-                        for line in response.text.split('\n'):
-                            if 'confirm=' in line and 'download' in line:
-                                # Look for the download link with confirm token
-                                start = line.find('confirm=') + 8
-                                end = line.find('&', start)
-                                if end == -1:
-                                    end = line.find('"', start)
-                                confirm_token = line[start:end]
+                        
+                        # Method 1: Look for form action with confirm parameter
+                        import re
+                        token_patterns = [
+                            r'confirm=([^&"]+)',
+                            r'"confirm"\s*:\s*"([^"]+)"',
+                            r'name="confirm"\s+value="([^"]+)"',
+                            r'&amp;confirm=([^&"]+)',
+                            r'confirm%3D([^%&"]+)'
+                        ]
+                        
+                        for pattern in token_patterns:
+                            match = re.search(pattern, html_content)
+                            if match:
+                                confirm_token = match.group(1)
+                                print(f"Found confirm token using pattern: {pattern}")
                                 break
                         
                         if confirm_token:
-                            # Make second request with confirm token
-                            confirm_url = f"https://drive.google.com/uc?export=download&id={url.split('id=')[1]}&confirm={confirm_token}"
+                            # Extract file ID from original URL
+                            file_id = url.split('id=')[1]
+                            confirm_url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={confirm_token}"
+                            print(f"Retrying with confirm URL...")
                             response = session.get(confirm_url, stream=True)
                         else:
                             print(f"Could not find confirm token for {filename}")
+                            print("HTML snippet:", html_content[:500])
                             continue
                     
                     response.raise_for_status()
@@ -74,7 +85,7 @@ class PlantAnalyzer:
                     content_type = response.headers.get('content-type', '')
                     if 'text/html' in content_type:
                         print(f"Warning: Still receiving HTML for {filename}")
-                        print("First 200 chars:", response.text[:200])
+                        print("Response headers:", dict(response.headers))
                         continue
                     
                     with open(filepath, 'wb') as f:
