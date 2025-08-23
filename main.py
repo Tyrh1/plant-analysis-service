@@ -44,24 +44,36 @@ class PlantAnalyzer:
                     session = requests.Session()
                     response = session.get(url, stream=True)
                     
-                    # Handle Google Drive's virus scan warning for large files
-                    if 'download_warning' in response.text:
-                        # Extract the confirm token
+                    # Check if we got the virus scan warning page
+                    if 'text/html' in response.headers.get('content-type', '') and 'virus scan warning' in response.text.lower():
+                        print(f"Handling virus scan warning for {filename}...")
+                        
+                        # Extract confirm token from the HTML
+                        confirm_token = None
                         for line in response.text.split('\n'):
-                            if 'confirm=' in line:
-                                confirm_token = line.split('confirm=')[1].split('&')[0]
+                            if 'confirm=' in line and 'download' in line:
+                                # Look for the download link with confirm token
+                                start = line.find('confirm=') + 8
+                                end = line.find('&', start)
+                                if end == -1:
+                                    end = line.find('"', start)
+                                confirm_token = line[start:end]
                                 break
                         
-                        # Make second request with confirm token
-                        confirm_url = f"{url}&confirm={confirm_token}"
-                        response = session.get(confirm_url, stream=True)
+                        if confirm_token:
+                            # Make second request with confirm token
+                            confirm_url = f"https://drive.google.com/uc?export=download&id={url.split('id=')[1]}&confirm={confirm_token}"
+                            response = session.get(confirm_url, stream=True)
+                        else:
+                            print(f"Could not find confirm token for {filename}")
+                            continue
                     
                     response.raise_for_status()
                     
-                    # Check if we got HTML instead of binary data
+                    # Final check for HTML content
                     content_type = response.headers.get('content-type', '')
                     if 'text/html' in content_type:
-                        print(f"Warning: Received HTML instead of binary data for {filename}")
+                        print(f"Warning: Still receiving HTML for {filename}")
                         print("First 200 chars:", response.text[:200])
                         continue
                     
