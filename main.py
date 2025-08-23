@@ -210,3 +210,4 @@ async def analyze_plant(request: AnalysisRequest):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "models_loaded": analyzer.classifier_model is not None}
+
