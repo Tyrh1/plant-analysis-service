@@ -41,13 +41,43 @@ class PlantAnalyzer:
             if not os.path.exists(filepath):
                 try:
                     print(f"Downloading {filename}...")
-                    response = requests.get(url, stream=True)
+                    session = requests.Session()
+                    response = session.get(url, stream=True)
+                    
+                    # Handle Google Drive's virus scan warning for large files
+                    if 'download_warning' in response.text:
+                        # Extract the confirm token
+                        for line in response.text.split('\n'):
+                            if 'confirm=' in line:
+                                confirm_token = line.split('confirm=')[1].split('&')[0]
+                                break
+                        
+                        # Make second request with confirm token
+                        confirm_url = f"{url}&confirm={confirm_token}"
+                        response = session.get(confirm_url, stream=True)
+                    
                     response.raise_for_status()
+                    
+                    # Check if we got HTML instead of binary data
+                    content_type = response.headers.get('content-type', '')
+                    if 'text/html' in content_type:
+                        print(f"Warning: Received HTML instead of binary data for {filename}")
+                        print("First 200 chars:", response.text[:200])
+                        continue
                     
                     with open(filepath, 'wb') as f:
                         for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    print(f"Downloaded {filename} successfully")
+                            if chunk:
+                                f.write(chunk)
+                    
+                    # Verify file size
+                    file_size = os.path.getsize(filepath)
+                    if file_size < 1000:  # Less than 1KB is likely an error page
+                        print(f"Warning: {filename} is only {file_size} bytes, likely corrupted")
+                        os.remove(filepath)
+                        continue
+                        
+                    print(f"Downloaded {filename} successfully ({file_size} bytes)")
                 except Exception as e:
                     print(f"Error downloading {filename}: {e}")
     
