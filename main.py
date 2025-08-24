@@ -10,6 +10,7 @@ from PIL import Image
 import os
 import requests
 import zipfile
+from sklearn.preprocessing import LabelEncoder
 
 app = FastAPI()
 
@@ -24,6 +25,27 @@ class PlantAnalyzer:
         self.detector_model = None
         self.label_encoder = None
         self.load_models()
+    
+    def create_fallback_label_encoder(self):
+        """Create a fallback label encoder with the expected classes"""
+        try:
+            print("Creating fallback label encoder...")
+            fallback_classes = ['Eggplant-Healthy', 'Eggplant-Unhealthy', 'Tomato-Healthy', 'Tomato-Unhealthy']
+            label_encoder = LabelEncoder()
+            label_encoder.fit(fallback_classes)
+            
+            # Save the fallback encoder
+            os.makedirs('models', exist_ok=True)
+            with open('models/label_encoder_advanced.pkl', 'wb') as f:
+                pickle.dump(label_encoder, f)
+            
+            print("✅ Fallback label encoder created successfully")
+            print(f"   Classes: {list(label_encoder.classes_)}")
+            return label_encoder
+            
+        except Exception as e:
+            print(f"❌ Error creating fallback label encoder: {e}")
+            return None
     
     def download_models(self):
         """Download models from cloud storage if not present locally"""
@@ -58,10 +80,16 @@ class PlantAnalyzer:
                         print(f"❌ {filename}: File not found on Hugging Face Hub")
                         print("💡 Solution: Upload your model files to https://huggingface.co/tyrh1/plant-analysis-models")
                         print(f"   Expected URL: {url}")
+                        if filename == 'label_encoder_advanced.pkl':
+                            print("🔧 Creating fallback label encoder...")
+                            self.create_fallback_label_encoder()
                         continue
                     elif 'text/html' in content_type:
                         print(f"❌ {filename}: Server serving HTML instead of file")
                         print("💡 Solution: Upload files to Hugging Face Hub or GitHub Releases")
+                        if filename == 'label_encoder_advanced.pkl':
+                            print("🔧 Creating fallback label encoder...")
+                            self.create_fallback_label_encoder()
                         continue
                     
                     response.raise_for_status()
@@ -77,13 +105,20 @@ class PlantAnalyzer:
                     if file_size < 1000:
                         print(f"❌ {filename}: File too small ({file_size} bytes), likely corrupted")
                         os.remove(filepath)
+                        if filename == 'label_encoder_advanced.pkl':
+                            print("🔧 File corrupted, creating fallback label encoder...")
+                            self.create_fallback_label_encoder()
                         continue
                         
                     print(f"✅ {filename}: Downloaded successfully ({file_size:,} bytes)")
                     
                 except Exception as e:
                     print(f"❌ Error downloading {filename}: {e}")
-                    print("💡 Upload your models to: https://huggingface.co/tyrh1/plant-analysis-models")
+                    if filename == 'label_encoder_advanced.pkl':
+                        print("🔧 Download failed, creating fallback label encoder...")
+                        self.create_fallback_label_encoder()
+                    else:
+                        print("💡 Upload your models to: https://huggingface.co/tyrh1/plant-analysis-models")
 
     def load_models(self):
         """Load the trained CNN models"""
@@ -94,8 +129,15 @@ class PlantAnalyzer:
             self.classifier_model = tf.keras.models.load_model('models/best_plant_classifier_advanced.h5')
             self.detector_model = tf.keras.models.load_model('models/esp32_plant_detector.h5')
             
-            with open('models/label_encoder_advanced.pkl', 'rb') as f:
-                self.label_encoder = pickle.load(f)
+            try:
+                with open('models/label_encoder_advanced.pkl', 'rb') as f:
+                    self.label_encoder = pickle.load(f)
+                print("✅ Label encoder loaded successfully")
+                print(f"   Classes: {list(self.label_encoder.classes_)}")
+            except (FileNotFoundError, pickle.UnpicklingError, EOFError) as e:
+                print(f"❌ Error loading label encoder: {e}")
+                print("🔧 Creating fallback label encoder...")
+                self.label_encoder = self.create_fallback_label_encoder()
                 
             print("Models loaded successfully")
         except Exception as e:
