@@ -36,11 +36,10 @@ class PlantAnalyzer:
             'label_encoder_advanced.pkl': os.environ.get('LABEL_ENCODER_URL')
         }
         
-        # Fallback to Google Drive URLs if env vars not set
         fallback_urls = {
-            'best_plant_classifier_advanced.h5': 'https://drive.google.com/uc?export=download&id=17wOvHUju1_DdclVE0FCtnxMSFz9CdY08',
-            'esp32_plant_detector.h5': 'https://drive.google.com/uc?export=download&id=1D-Ey9qe9JlEBEaqhIo-4VYDIKhHuCILd',
-            'label_encoder_advanced.pkl': 'https://drive.google.com/uc?export=download&id=1uMtE4SYzl_EMg1GchaIIyFHS7wR4PRG8'
+            'best_plant_classifier_advanced.h5': 'https://huggingface.co/tyrh1/plant-analysis-models/resolve/main/best_plant_classifier_advanced.h5',
+            'esp32_plant_detector.h5': 'https://huggingface.co/tyrh1/plant-analysis-models/resolve/main/esp32_plant_detector.h5',
+            'label_encoder_advanced.pkl': 'https://huggingface.co/tyrh1/plant-analysis-models/resolve/main/label_encoder_advanced.pkl'
         }
         
         for filename, url in model_files.items():
@@ -54,12 +53,15 @@ class PlantAnalyzer:
                     
                     response = requests.get(url, stream=True, timeout=300)
                     
-                    # Check if we got HTML (Google Drive error page)
                     content_type = response.headers.get('content-type', '')
-                    if 'text/html' in content_type:
-                        print(f"❌ {filename}: Google Drive serving HTML instead of file")
-                        print("💡 Solution: Upload files to a different hosting service")
-                        print("   Recommended: Hugging Face Hub, GitHub Releases, or direct upload")
+                    if 'text/html' in content_type and 'huggingface.co' in url:
+                        print(f"❌ {filename}: File not found on Hugging Face Hub")
+                        print("💡 Solution: Upload your model files to https://huggingface.co/tyrh1/plant-analysis-models")
+                        print(f"   Expected URL: {url}")
+                        continue
+                    elif 'text/html' in content_type:
+                        print(f"❌ {filename}: Server serving HTML instead of file")
+                        print("💡 Solution: Upload files to Hugging Face Hub or GitHub Releases")
                         continue
                     
                     response.raise_for_status()
@@ -81,7 +83,7 @@ class PlantAnalyzer:
                     
                 except Exception as e:
                     print(f"❌ Error downloading {filename}: {e}")
-                    print("💡 Try uploading files to Hugging Face Hub or GitHub Releases")
+                    print("💡 Upload your models to: https://huggingface.co/tyrh1/plant-analysis-models")
 
     def load_models(self):
         """Load the trained CNN models"""
@@ -236,7 +238,8 @@ async def startup_event():
         print(f"Label Encoder: {'✅' if analyzer.label_encoder else '❌'}")
         print()
         print("🔧 SOLUTIONS:")
-        print("1. Upload models to Hugging Face Hub (free): https://huggingface.co/")
-        print("2. Use GitHub Releases for files <2GB")
-        print("3. Set environment variables: CLASSIFIER_MODEL_URL, DETECTOR_MODEL_URL, LABEL_ENCODER_URL")
+        print("1. Upload models to Hugging Face Hub: https://huggingface.co/")
+        print("2. Create repository: tyrh1/plant-analysis-models")
+        print("3. Upload: best_plant_classifier_advanced.h5, esp32_plant_detector.h5, label_encoder_advanced.pkl")
+        print("4. Files should be accessible at the URLs shown in download logs above")
     print("=== Service Ready ===")
